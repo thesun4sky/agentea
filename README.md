@@ -50,8 +50,27 @@
 | [Claude Code](https://claude.ai/claude-code) | `npm i -g @anthropic-ai/claude-code` |
 | [Codex CLI](https://github.com/openai/codex) | `npm i -g @openai/codex` (ChatGPT Plus/Pro/Team 구독) |
 | [Grok CLI](https://github.com/xai-org/grok-cli) | Grok Build 설치 (xAI 구독) |
-| Antigravity CLI | `brew install --cask antigravity-cli` (Google 계정) |
+| [Antigravity CLI](https://antigravity.google/download#antigravity-2) | 아래 설치 명령 참조 (Google 계정) |
 | [GitHub CLI](https://cli.github.com/) | `brew install gh && gh auth login` (`/agentea-review pr` 사용 시 필요, GitHub 전용) |
+
+### Antigravity CLI 설치
+
+**macOS / Linux**
+```bash
+curl -fsSL https://antigravity.google/cli/install.sh | bash
+```
+
+**Windows (PowerShell)**
+```powershell
+irm https://antigravity.google/cli/install.ps1 | iex
+```
+
+**Windows (CMD)**
+```cmd
+curl -fsSL https://antigravity.google/cli/install.cmd -o install.cmd && install.cmd && del install.cmd
+```
+
+설치 후 `agy` 명령으로 Google 계정 로그인을 완료합니다.
 
 ⚠️  모든 에이전트는 **구독 계정 OAuth** 방식으로 로그인합니다 (API key 아님).
 
