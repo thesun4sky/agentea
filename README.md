@@ -65,39 +65,22 @@ curl -fsSL https://antigravity.google/cli/install.sh | bash
 
 ## 🚀 설치
 
-### Option A: git clone (권장)
+### Option A: Claude Code 플러그인 (권장)
 
-```bash
-# ~/.claude/agentea-src에 clone (skills/ 밖 → 스킬 로더 중복 인식 방지)
-git clone https://github.com/thesun4sky/agentea ~/.claude/agentea-src
-mkdir -p ~/.claude/skills
+Claude Code 세션 안에서 두 줄:
 
-# 8개 스킬을 ~/.claude/skills/ 에 배치 (재설치 시에도 안전하게 덮어쓰기)
-rm -rf ~/.claude/skills/agentea
-ln -sfn ~/.claude/agentea-src ~/.claude/skills/agentea
-for sub in status ask review council brainstorming clear off; do
-  rm -rf ~/.claude/skills/agentea-$sub
-  ln -sfn ~/.claude/agentea-src/agentea-$sub ~/.claude/skills/agentea-$sub
-done
+```
+/plugin marketplace add https://github.com/thesun4sky/agentea
+/plugin install agentea
 ```
 
-> ℹ️  원본은 `~/.claude/agentea-src`에 있고, `~/.claude/skills/` 에는 symlink만 생성됩니다. 스킬 로더가 `agentea-src` 자체를 노출하지 않습니다. 업데이트는 `cd ~/.claude/agentea-src && git pull`로 가능합니다.
-
-### Option B: 수동 복사
+### Option B: 원라이너 (터미널)
 
 ```bash
-git clone https://github.com/thesun4sky/agentea /tmp/agentea
-mkdir -p ~/.claude/skills  # skills 디렉토리 없을 경우 생성
-# 재설치 시 중첩 방지를 위해 기존 경로 제거 후 복사
-rm -rf ~/.claude/skills/agentea
-cp -r /tmp/agentea ~/.claude/skills/agentea       # SKILL.md + lib/
-for sub in status ask review council brainstorming clear off; do
-  rm -rf ~/.claude/skills/agentea-$sub
-  cp -r /tmp/agentea/agentea-$sub ~/.claude/skills/agentea-$sub
-done
+curl -fsSL https://raw.githubusercontent.com/thesun4sky/agentea/main/install.sh | bash
 ```
 
-설치 후 Claude Code를 재시작하거나 `/skills` 명령으로 새 스킬을 인식시킵니다.
+> 업데이트: `cd ~/.claude/agentea-src && git pull`
 
 ---
 

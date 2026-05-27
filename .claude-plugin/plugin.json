@@ -1,0 +1,28 @@
+{
+  "name": "agentea",
+  "version": "1.0.0",
+  "description": "🫖 Claude Code + Codex + Grok + Antigravity 4-agent tea party — multi-agent code review & council decisions",
+  "author": {
+    "name": "thesun4sky"
+  },
+  "repository": "https://github.com/thesun4sky/agentea",
+  "homepage": "https://github.com/thesun4sky/agentea",
+  "license": "MIT",
+  "keywords": [
+    "claude-code",
+    "plugin",
+    "multi-agent",
+    "code-review",
+    "agentea"
+  ],
+  "skills": [
+    "./",
+    "./agentea-status/",
+    "./agentea-ask/",
+    "./agentea-review/",
+    "./agentea-council/",
+    "./agentea-brainstorming/",
+    "./agentea-clear/",
+    "./agentea-off/"
+  ]
+}
