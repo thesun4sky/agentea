@@ -6,14 +6,14 @@
   },
   "metadata": {
     "description": "🫖 agentea marketplace — multi-agent tea party plugin for Claude Code",
-    "version": "1.0.3"
+    "version": "1.0.4"
   },
   "plugins": [
     {
       "name": "agentea",
       "source": "./",
       "description": "🫖 Claude Code + Codex + Grok + Antigravity 4-agent tea party — multi-agent code review, council decisions, and brainstorming via cmux panes",
-      "version": "1.0.3",
+      "version": "1.0.4",
       "author": {
         "name": "thesun4sky"
       },

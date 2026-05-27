@@ -249,23 +249,40 @@ except Exception:
 "
 }
 
-# _send_to_agent <name> <msg> [--verify] — send message + Return to agent
-#   Default (no --verify): best-effort send (low latency, no echo verification).
-#   With --verify: nonce-prefixed echo verification + C-u line-clear retry to
-#   handle agy first-message-drop race condition. Returns:
-#     0 = sent (echo verified or best-effort)
+# _send_to_agent <name> <msg> [--verify|--verify-soft] — send message + Return
+#   Default (no flag): best-effort send (low latency, no echo verification).
+#   --verify:      nonce echo check + BackSpace retry; strict — Return NOT
+#                  pressed if echo never seen.
+#   --verify-soft: same nonce check + retry, but on echo-miss STILL press
+#                  Return (warn instead of abandon). Use when re-send is
+#                  cheap and a delivery miss is worse than a duplicate.
+#   Per-agent read window: 25 lines default, 40 for grok (its TUI wraps
+#   long messages further down the screen).
+#   Post-success: _check_agent_startup adds a 2s grok-specific stabilization
+#   sleep before returning, but this function itself does not.
+#   Returns:
+#     0 = sent (echo verified, or no verification requested)
 #     1 = surface not found
 #     2 = (--verify only) echo missing after retry, Return NOT pressed
-#         (caller should warn user and consider a separate retry)
+#     3 = (--verify-soft only) echo missing but Return PRESSED with warning
 _send_to_agent() {
-  local name="$1" msg="$2" verify=""
-  [ "$3" = "--verify" ] && verify=1
+  local name="$1" msg="$2" verify="" verify_soft=""
+  case "$3" in
+    --verify)      verify=1 ;;
+    --verify-soft) verify=1; verify_soft=1 ;;  # echo miss → warn + press Return anyway
+  esac
 
   local surface=$(_agent_surface "$name")
   if [ -z "$surface" ]; then
     echo "⚠️  [$name] surface not found in state" >&2
     return 1
   fi
+
+  # Per-agent read-screen window — grok TUI wraps long input across many visual
+  # lines, pushing the marker out of the default window during a busy startup.
+  # Larger windows cost nothing and absorb wrap/scroll variance.
+  local read_lines=25
+  [ "$name" = "grok" ] && read_lines=40
 
   if [ -z "$verify" ]; then
     # best-effort path (no regression)
@@ -306,15 +323,23 @@ _send_to_agent() {
 
   cmux send --surface "$surface" "$sent_msg" >/dev/null
   sleep 0.6
-  if ! cmux read-screen --surface "$surface" --lines 12 2>/dev/null | grep -qF "$marker"; then
+  if ! cmux read-screen --surface "$surface" --lines "$read_lines" 2>/dev/null | grep -qF "$marker"; then
     # First send not echoed — either dropped or false negative.
     # Clear the input buffer (safe in both cases) before retry.
     _agentea_clear_buffer "$surface" "$sent_msg"
     sleep 0.3
     cmux send --surface "$surface" "$sent_msg" >/dev/null
     sleep 0.6
-    if ! cmux read-screen --surface "$surface" --lines 12 2>/dev/null | grep -qF "$marker"; then
-      # Still missing — true drop. Do NOT press Return; clear buffer and signal caller.
+    if ! cmux read-screen --surface "$surface" --lines "$read_lines" 2>/dev/null | grep -qF "$marker"; then
+      # Echo missing after retry.
+      if [ -n "$verify_soft" ]; then
+        # --verify-soft: warn but still press Return (caller accepts risk of
+        # false-positive drop, e.g. role_guide handshake where re-send is cheap).
+        echo "⚠️  [$name] handshake echo missing — pressing Return anyway (--verify-soft)" >&2
+        cmux send-key --surface "$surface" Return >/dev/null
+        return 3
+      fi
+      # --verify (strict): true drop. Do NOT press Return; clear buffer and signal caller.
       echo "⚠️  [$name] handshake echo missing after BackSpace + retry — abandoning Return to avoid pollution" >&2
       _agentea_clear_buffer "$surface" "$sent_msg"
       return 2
@@ -457,6 +482,14 @@ _check_agent_startup() {
         ;;
       ready*)
         echo "  ✅ [$agent_name] 준비 완료 ($STATUS)"
+        # grok-specific post-ready stabilization. Despite ready_grok matching
+        # an idle prompt box, grok's TUI continues laying out the input widget
+        # for ~1-2s after the prompt first appears. Sending a verify-prefixed
+        # message into that window triggered echo drops. A small extra wait
+        # closes that gap.
+        if [ "$agent_name" = "grok" ]; then
+          sleep 2
+        fi
         return 0
         ;;
       unknown)

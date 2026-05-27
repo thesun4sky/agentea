@@ -182,15 +182,16 @@ cat > "$AGENTEA_DIR/role_guide.md" << 'EOF'
 EOF
 
 for agent in "${SELECTED_AGENTS[@]}"; do
-  # --verify: nonce-prefixed echo check + C-u retry guards against
-  # agy first-message-drop (stdin attach race). rc=2 means the echo
-  # never appeared even after retry — Return was NOT pressed, so the
-  # user must reissue manually via /agentea-ask.
-  _send_to_agent "$agent" "$AGENTEA_DIR/role_guide.md 읽고 역할 확인해주세요" --verify
+  # --verify-soft: nonce-prefixed echo check, but press Return anyway on
+  # final echo-miss (rc=3) since the role_guide handshake is cheap to re-send
+  # and the bigger risk is failing to deliver the message at all (grok's TUI
+  # occasionally drops the echo even when input was accepted).
+  # rc=2 still means strict abandon (only --verify, not used here).
+  _send_to_agent "$agent" "$AGENTEA_DIR/role_guide.md 읽고 역할 확인해주세요" --verify-soft
   rc=$?
-  if [ "$rc" = "2" ]; then
-    echo "⚠️  [$agent] role_guide handshake echo가 두 번의 시도에서도 보이지 않았습니다."
-    echo "    cmux $agent pane을 직접 확인하고, 필요 시 다음 명령으로 수동 재전송하세요:"
+  if [ "$rc" = "3" ]; then
+    echo "ℹ️  [$agent] role_guide handshake echo가 잡히지 않았지만 Return은 전송됨 (--verify-soft)."
+    echo "    cmux $agent pane을 확인해서 메시지가 들어갔는지 확인하고, 필요 시:"
     echo "    /agentea-ask $agent \"$AGENTEA_DIR/role_guide.md 읽고 역할 확인해주세요\""
   fi
 done
