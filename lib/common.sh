@@ -142,16 +142,40 @@ PY
 _classify_screen() {
   local content="$1"
   [ -z "$content" ] && echo "unreachable" && return
+
+  # Ready FIRST — common TUI prompt patterns indicate idle/ready state.
+  # We look at the last few lines for an interactive prompt marker.
+  local tail_content=$(echo "$content" | tail -8)
+  if echo "$tail_content" | grep -qE '(^|\s)(›|❯|>)\s|to change|shortcuts|always-approve|Build · '; then
+    if echo "$content" | grep -qE 'Codex|gpt-[0-9]|OpenAI'; then echo "ready(codex)"; return; fi
+    if echo "$content" | grep -qE 'Grok Build|Grok·|xAI'; then echo "ready(grok)"; return; fi
+    if echo "$content" | grep -qE 'Antigravity|Gemini [0-9]\.[0-9]|Google AI'; then echo "ready(antigravity)"; return; fi
+  fi
+
   # Order matters — more specific patterns first
-  echo "$content" | grep -qiE 'trust|신뢰|Do you trust|authors of files' && echo "trust_prompt" && return
-  echo "$content" | grep -qiE '\[y/n\]|\(y/n\)|\(yes/no\)|yes/no|Y/n' && echo "confirm_yn" && return
-  echo "$content" | grep -qiE 'Gemini CLI .* import|import.*Gemini CLI|migrate.*Gemini' && echo "import_offer" && return
-  echo "$content" | grep -qiE 'log.?in|sign.?in|authenticate|API.?key|api_key|token|credential|password|username|email' && echo "login_prompt" && return
-  echo "$content" | grep -qiE 'command not found|Error:|failed|ENOENT|permission denied|not installed' && echo "error_state" && return
-  echo "$content" | grep -qiE '^\s*[•·▸▹►⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]|Thinking\.\.\.|Exploring|Running|working|Generating|stop  \[' && echo "busy" && return
-  echo "$content" | grep -qiE 'gpt-|codex|openai' && echo "ready(codex)" && return
-  echo "$content" | grep -qiE 'Grok Build|grok|xai' && echo "ready(grok)" && return
-  echo "$content" | grep -qiE 'gemini|agy|antigravity' && echo "ready(antigravity)" && return
+  echo "$content" | grep -qiE 'Do you trust|authors of files|신뢰하|trust this folder' && echo "trust_prompt" && return
+  # import_offer BEFORE confirm_yn (Gemini import is also a Y/N prompt — must classify as import)
+  # Match both with-and-without "CLI" wording, and standalone "Gemini settings ... [Y/n]" forms.
+  echo "$content" | grep -qiE 'Gemini CLI .* (import|migrate)|(import|migrate).*Gemini( CLI)? (settings|configuration|config)|migrate.*Gemini settings|Import existing Gemini' && echo "import_offer" && return
+  # Also catch "Gemini settings ... [Y/n]" prompt form even when 'import'/'migrate' verb is implicit
+  if echo "$content" | grep -qiE 'Gemini( CLI)? settings'; then
+    echo "$tail_content" | grep -qE '\[Y/[nN]\]|\(yes/no\)' && echo "import_offer" && return
+  fi
+  # confirm_yn requires prompt marker near end (not arbitrary yes/no text in body)
+  # Case-insensitive so both [Y/n] and [y/N] forms match.
+  echo "$tail_content" | grep -qiE '\[y/n\][[:space:]]*[?:]?[[:space:]]*$|\(y/n\)[[:space:]]*[?:]?[[:space:]]*$|\(yes/no\)[[:space:]]*[?:]?[[:space:]]*$' && echo "confirm_yn" && return
+  # login_prompt requires action context, not bare 'email'/'token' words
+  echo "$tail_content" | grep -qiE '(please|to continue|required to|first need to) (log|sign).?in|Enter your (API|access) (key|token)|authentication required|authorize this device|press Enter to.*(login|sign|auth)' && echo "login_prompt" && return
+  # error_state — anchored to line start or specific failure messages
+  echo "$content" | grep -qE '^(Error:|ENOENT|.+command not found|.+permission denied)|spawn ENOENT|process exited with code|cannot start' && echo "error_state" && return
+  # busy — spinner glyphs at line start, or explicit progress verbs
+  echo "$content" | grep -qE '^\s*[•·▸▹►⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]|^(Thinking|Exploring|Running|Working|Generating)\.\.\.|stop  \[' && echo "busy" && return
+
+  # Fallback ready — broader keyword match (last resort)
+  echo "$content" | grep -qE 'Codex|gpt-[0-9]' && echo "ready(codex)" && return
+  echo "$content" | grep -qE 'Grok Build|Grok·' && echo "ready(grok)" && return
+  echo "$content" | grep -qE 'Antigravity CLI|Gemini [0-9]\.[0-9]' && echo "ready(antigravity)" && return
+
   # Non-empty content that matches no known pattern → unknown (do NOT fall back to ready)
   echo "unknown"
 }
@@ -175,11 +199,12 @@ _status_icon() {
 # -----------------------------------------------------------------------------
 
 # _resolve_agent_cli <name> — map canonical name → actual CLI executable
+# Note: agy uses --dangerously-skip-permissions to prevent mid-task approval prompts
 _resolve_agent_cli() {
   case "$1" in
     codex)        echo "codex" ;;
     grok)         echo "grok" ;;
-    antigravity)  echo "agy" ;;
+    antigravity)  echo "agy --dangerously-skip-permissions" ;;
     *)            echo "" ;;
   esac
 }
@@ -196,11 +221,19 @@ _resolve_agent_alias() {
 }
 
 # _agent_surface <name> — get surface for a canonical agent name
+# Reads from STATE_FILE directly so it works in both bash and zsh
+# (zsh does not support ${!var} indirect expansion).
 _agent_surface() {
   local name="$1"
-  local n=$(echo "$name" | tr '[:lower:]' '[:upper:]')
-  local var="AGENT_${n}_SURFACE"
-  echo "${!var}"
+  [ -z "$name" ] && return 1
+  python3 -c "
+import json, sys
+try:
+    d = json.load(open('$STATE_FILE'))
+    print(d.get('agents',{}).get('$name',{}).get('surface') or '')
+except Exception:
+    print('')
+"
 }
 
 # _send_to_agent <name> <msg> — send single-line message + Return to agent
@@ -212,21 +245,23 @@ _send_to_agent() {
     return 1
   fi
   cmux send --surface "$surface" "$msg" >/dev/null
+  sleep 0.3  # Wait for text to land in terminal buffer before pressing Return
   cmux send-key --surface "$surface" Return >/dev/null
 }
 
 # _active_agents — print canonical names of enabled+reachable agents (one per line)
+# Reads from STATE_FILE directly so it works in bash and zsh.
 _active_agents() {
-  for name in "${KNOWN_AGENTS[@]}"; do
-    local n=$(echo "$name" | tr '[:lower:]' '[:upper:]')
-    local enabled_var="AGENT_${n}_ENABLED"
-    local status_var="AGENT_${n}_STATUS"
-    local enabled="${!enabled_var}"
-    local status="${!status_var}"
-    if [ "$enabled" = "true" ] && [[ "$status" =~ ^(ready|busy) ]]; then
-      echo "$name"
-    fi
-  done
+  python3 -c "
+import json
+try:
+    d = json.load(open('$STATE_FILE'))
+    for n, info in d.get('agents', {}).items():
+        if info.get('enabled') and (info.get('status') or '').startswith(('ready','busy')):
+            print(n)
+except Exception:
+    pass
+"
 }
 
 # _broadcast <msg> — send to every active agent
