@@ -2,9 +2,8 @@
 *.local
 .agentea/
 
-# autopilot/ralplan working state (regenerable; specs+plans below are tracked)
-.omc/state/
-.omc/autopilot/
+# omc working directory (all contents local-only)
+.omc/
 .antigravitycli/
 .gstack/
 threads/
