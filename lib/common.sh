@@ -282,7 +282,12 @@ _send_to_agent() {
   local nonce
   nonce=$(od -An -N4 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n')
   [ -z "$nonce" ] && nonce=$(printf '%04x%04x' "$$" "$RANDOM")
-  local marker="[[AGY-${nonce}]]"
+  # Marker pattern: alphanumeric + underscore only.
+  # Earlier "[[AGY-${nonce}]]" was stripped by grok's TUI input box in some
+  # races (leading "[[" lost on short messages or first-message-after-startup),
+  # which broke grep -qF marker detection. Plain identifier survives all
+  # three TUIs (codex/grok/agy) reliably.
+  local marker="AGENTEA_NONCE_${nonce}"
   local sent_msg="${marker} ${msg}"
 
   # Helper: clear input buffer with BackSpace repetition.
