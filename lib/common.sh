@@ -149,7 +149,13 @@ _classify_screen() {
   if echo "$tail_content" | grep -qE '(^|\s)(›|❯|>)\s|to change|shortcuts|always-approve|Build · '; then
     if echo "$content" | grep -qE 'Codex|gpt-[0-9]|OpenAI'; then echo "ready(codex)"; return; fi
     if echo "$content" | grep -qE 'Grok Build|Grok·|xAI'; then echo "ready(grok)"; return; fi
-    if echo "$content" | grep -qE 'Antigravity|Gemini [0-9]\.[0-9]|Google AI'; then echo "ready(antigravity)"; return; fi
+    # agy: require footer ("? for shortcuts") in addition to header — guards
+    # against the stdin-attach race where header renders before TTY is ready.
+    # Fallback below still accepts header-only (so missing footer never blocks startup).
+    if echo "$content" | grep -qE 'Antigravity|Gemini [0-9]\.[0-9]|Google AI' \
+       && echo "$content" | grep -qE '\? for shortcuts'; then
+      echo "ready(antigravity)"; return
+    fi
   fi
 
   # Order matters — more specific patterns first
@@ -158,8 +164,9 @@ _classify_screen() {
   # Match both with-and-without "CLI" wording, and standalone "Gemini settings ... [Y/n]" forms.
   echo "$content" | grep -qiE 'Gemini CLI .* (import|migrate)|(import|migrate).*Gemini( CLI)? (settings|configuration|config)|migrate.*Gemini settings|Import existing Gemini' && echo "import_offer" && return
   # Also catch "Gemini settings ... [Y/n]" prompt form even when 'import'/'migrate' verb is implicit
+  # Case-insensitive — match both [Y/n] (default-yes) and [y/N] (default-no) variants.
   if echo "$content" | grep -qiE 'Gemini( CLI)? settings'; then
-    echo "$tail_content" | grep -qE '\[Y/[nN]\]|\(yes/no\)' && echo "import_offer" && return
+    echo "$tail_content" | grep -qiE '\[y/n\]|\(y/n\)|\(yes/no\)' && echo "import_offer" && return
   fi
   # confirm_yn requires prompt marker near end (not arbitrary yes/no text in body)
   # Case-insensitive so both [Y/n] and [y/N] forms match.
@@ -199,11 +206,14 @@ _status_icon() {
 # -----------------------------------------------------------------------------
 
 # _resolve_agent_cli <name> — map canonical name → actual CLI executable
-# Note: agy uses --dangerously-skip-permissions to prevent mid-task approval prompts
+# All agents launched with flags that suppress mid-task approval prompts:
+#   codex: -a never           — never ask for user approval
+#   grok:  --always-approve   — auto-approve all tool executions
+#   agy:   --dangerously-skip-permissions — skip permission prompts
 _resolve_agent_cli() {
   case "$1" in
-    codex)        echo "codex" ;;
-    grok)         echo "grok" ;;
+    codex)        echo "codex -a never" ;;
+    grok)         echo "grok --always-approve" ;;
     antigravity)  echo "agy --dangerously-skip-permissions" ;;
     *)            echo "" ;;
   esac
@@ -236,17 +246,75 @@ except Exception:
 "
 }
 
-# _send_to_agent <name> <msg> — send single-line message + Return to agent
+# _send_to_agent <name> <msg> [--verify] — send message + Return to agent
+#   Default (no --verify): best-effort send (low latency, no echo verification).
+#   With --verify: nonce-prefixed echo verification + C-u line-clear retry to
+#   handle agy first-message-drop race condition. Returns:
+#     0 = sent (echo verified or best-effort)
+#     1 = surface not found
+#     2 = (--verify only) echo missing after retry, Return NOT pressed
+#         (caller should warn user and consider a separate retry)
 _send_to_agent() {
-  local name="$1" msg="$2"
+  local name="$1" msg="$2" verify=""
+  [ "$3" = "--verify" ] && verify=1
+
   local surface=$(_agent_surface "$name")
   if [ -z "$surface" ]; then
     echo "⚠️  [$name] surface not found in state" >&2
     return 1
   fi
-  cmux send --surface "$surface" "$msg" >/dev/null
-  sleep 0.3  # Wait for text to land in terminal buffer before pressing Return
+
+  if [ -z "$verify" ]; then
+    # best-effort path (no regression)
+    cmux send --surface "$surface" "$msg" >/dev/null
+    sleep 0.3
+    cmux send-key --surface "$surface" Return >/dev/null
+    return 0
+  fi
+
+  # --verify path: nonce-prefix + Return-pre-check + C-u retry
+  # /dev/urandom: zsh subshells inherit RANDOM seed from parent, so $RANDOM
+  # collides when called from concurrent command substitutions (e.g. during
+  # broadcast). urandom gives true entropy; RANDOM is the fallback.
+  local nonce
+  nonce=$(od -An -N4 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n')
+  [ -z "$nonce" ] && nonce=$(printf '%04x%04x' "$$" "$RANDOM")
+  local marker="[[AGY-${nonce}]]"
+  local sent_msg="${marker} ${msg}"
+
+  # Helper: clear input buffer with BackSpace repetition.
+  # agy ignores readline line-kill keys (C-u, C-a+C-k, ESC) — only BackSpace
+  # works for input editing. We send (msg_length + margin) BackSpaces.
+  _agentea_clear_buffer() {
+    local s="$1" m="$2"
+    local n
+    n=$(python3 -c "import sys; print(len(sys.argv[1]))" "$m" 2>/dev/null)
+    [ -z "$n" ] && n=200  # fallback
+    local i
+    for i in $(seq 1 $((n + 8))); do
+      cmux send-key --surface "$s" BackSpace >/dev/null 2>&1
+    done
+  }
+
+  cmux send --surface "$surface" "$sent_msg" >/dev/null
+  sleep 0.6
+  if ! cmux read-screen --surface "$surface" --lines 12 2>/dev/null | grep -qF "$marker"; then
+    # First send not echoed — either dropped or false negative.
+    # Clear the input buffer (safe in both cases) before retry.
+    _agentea_clear_buffer "$surface" "$sent_msg"
+    sleep 0.3
+    cmux send --surface "$surface" "$sent_msg" >/dev/null
+    sleep 0.6
+    if ! cmux read-screen --surface "$surface" --lines 12 2>/dev/null | grep -qF "$marker"; then
+      # Still missing — true drop. Do NOT press Return; clear buffer and signal caller.
+      echo "⚠️  [$name] handshake echo missing after BackSpace + retry — abandoning Return to avoid pollution" >&2
+      _agentea_clear_buffer "$surface" "$sent_msg"
+      return 2
+    fi
+  fi
+
   cmux send-key --surface "$surface" Return >/dev/null
+  return 0
 }
 
 # _active_agents — print canonical names of enabled+reachable agents (one per line)
