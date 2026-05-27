@@ -62,8 +62,42 @@ fi
 
 ```bash
 ROUND=1
-REVIEW_FILE="$AGENTEA_DIR/review_r${ROUND}.diff"
-git diff HEAD > "$REVIEW_FILE"   # 또는 위 표에 따라 준비
+TARGET_TYPE="${1:-}"   # pr | commit | file | (비어있으면 기본 git diff)
+TARGET_VAL="${2:-}"
+
+# 리뷰 대상 파일 결정 (인자에 따라 분기)
+case "$TARGET_TYPE" in
+  pr)
+    if [ -z "$TARGET_VAL" ]; then
+      echo "⚠️  PR 번호를 지정하세요. 예: /agentea-review pr 123"
+      exit 1
+    fi
+    REVIEW_FILE="$AGENTEA_DIR/review_r${ROUND}.diff"
+    gh pr diff "$TARGET_VAL" > "$REVIEW_FILE" || { echo "⚠️  PR diff 추출 실패 (gh 설치/로그인 확인)"; exit 1; }
+    ;;
+  commit)
+    REVIEW_FILE="$AGENTEA_DIR/review_r${ROUND}.diff"
+    git show HEAD > "$REVIEW_FILE" || { echo "⚠️  git show HEAD 실패"; exit 1; }
+    ;;
+  file)
+    if [ -z "$TARGET_VAL" ] || [ ! -f "$TARGET_VAL" ]; then
+      echo "⚠️  유효한 파일 경로를 지정하세요. 예: /agentea-review file src/auth.ts"
+      exit 1
+    fi
+    ext="${TARGET_VAL##*.}"
+    REVIEW_FILE="$AGENTEA_DIR/review_r${ROUND}.${ext}"
+    cp "$TARGET_VAL" "$REVIEW_FILE"
+    ;;
+  *)
+    # 기본: 현재 git diff
+    REVIEW_FILE="$AGENTEA_DIR/review_r${ROUND}.diff"
+    git diff HEAD > "$REVIEW_FILE"
+    if [ ! -s "$REVIEW_FILE" ]; then
+      echo "⚠️  변경 사항(git diff HEAD)이 없습니다. 파일 지정: /agentea-review file path/to/x"
+      exit 0
+    fi
+    ;;
+esac
 
 # 이전 라운드 잔여물 정리
 rm -f "$AGENTEA_DIR/codex_r${ROUND}.md" \
@@ -80,7 +114,7 @@ done < <(_active_agents)
 # 각 에이전트에 리뷰 요청 (broadcast 패턴이지만 응답 경로가 달라 개별 전송)
 for agent in "${!RESP_FILE[@]}"; do
   _send_to_agent "$agent" \
-    "🔍 REVIEW #${ROUND}: $REVIEW_FILE 읽고 결과를 ${RESP_FILE[$agent]} 에 저장 (ISSUE:/FIX: 형식 또는 마지막 줄 LGTM)"
+    "🔍 REVIEW #${ROUND}: $REVIEW_FILE 읽고, 소스 수정 없이 ISSUE: / FIX: 형식으로 제안하거나 이슈 없으면 마지막 줄에 LGTM. 결과를 ${RESP_FILE[$agent]} 에 저장"
 done
 
 # Claude도 같은 파일을 직접 Read하여 리뷰 → claude_rN.md Write

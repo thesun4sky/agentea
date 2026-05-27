@@ -50,7 +50,8 @@
 | [Claude Code](https://claude.ai/claude-code) | `npm i -g @anthropic-ai/claude-code` |
 | [Codex CLI](https://github.com/openai/codex) | `npm i -g @openai/codex` (ChatGPT Plus/Pro/Team 구독) |
 | [Grok CLI](https://github.com/xai-org/grok-cli) | Grok Build 설치 (xAI 구독) |
-| [Antigravity CLI](https://antigravity.google) | `brew install --cask antigravity-cli` (Google 계정) |
+| Antigravity CLI | `brew install --cask antigravity-cli` (Google 계정) |
+| [GitHub CLI](https://cli.github.com/) | `brew install gh && gh auth login` (`/agentea-review pr` 사용 시 필요, GitHub 전용) |
 
 ⚠️  모든 에이전트는 **구독 계정 OAuth** 방식으로 로그인합니다 (API key 아님).
 
@@ -61,26 +62,36 @@
 ### Option A: git clone (권장)
 
 ```bash
-git clone https://github.com/thesun4sky/agentea ~/.claude/skills/agentea-src
+# ~/.claude/agentea-src에 clone (skills/ 밖 → 스킬 로더 중복 인식 방지)
+git clone https://github.com/thesun4sky/agentea ~/.claude/agentea-src
+mkdir -p ~/.claude/skills
 
-# 8개 스킬을 ~/.claude/skills/ 에 배치
-ln -s ~/.claude/skills/agentea-src ~/.claude/skills/agentea
+# 8개 스킬을 ~/.claude/skills/ 에 배치 (재설치 시에도 안전하게 덮어쓰기)
+rm -rf ~/.claude/skills/agentea
+ln -sfn ~/.claude/agentea-src ~/.claude/skills/agentea
 for sub in status ask review council brainstorming clear off; do
-  ln -s ~/.claude/skills/agentea-src/agentea-$sub ~/.claude/skills/agentea-$sub
+  rm -rf ~/.claude/skills/agentea-$sub
+  ln -sfn ~/.claude/agentea-src/agentea-$sub ~/.claude/skills/agentea-$sub
 done
 ```
+
+> ℹ️  원본은 `~/.claude/agentea-src`에 있고, `~/.claude/skills/` 에는 symlink만 생성됩니다. 스킬 로더가 `agentea-src` 자체를 노출하지 않습니다. 업데이트는 `cd ~/.claude/agentea-src && git pull`로 가능합니다.
 
 ### Option B: 수동 복사
 
 ```bash
 git clone https://github.com/thesun4sky/agentea /tmp/agentea
+mkdir -p ~/.claude/skills  # skills 디렉토리 없을 경우 생성
+# 재설치 시 중첩 방지를 위해 기존 경로 제거 후 복사
+rm -rf ~/.claude/skills/agentea
 cp -r /tmp/agentea ~/.claude/skills/agentea       # SKILL.md + lib/
 for sub in status ask review council brainstorming clear off; do
+  rm -rf ~/.claude/skills/agentea-$sub
   cp -r /tmp/agentea/agentea-$sub ~/.claude/skills/agentea-$sub
 done
 ```
 
-설치 후 Claude Code를 재시작하거나 `/skill` 명령으로 새 스킬을 인식시킵니다.
+설치 후 Claude Code를 재시작하거나 `/skills` 명령으로 새 스킬을 인식시킵니다.
 
 ---
 
@@ -146,13 +157,13 @@ done
 
 ## 📁 .agentea/ 폴더 구조
 
-협업 산출물이 프로젝트 루트의 `.agentea/`에 저장됩니다 (자동으로 `.gitignore` 추가):
+협업 산출물이 프로젝트 루트의 `.agentea/`에 저장됩니다 (자동으로 `.gitignore`에 `.agentea/` 패턴 추가 → 모든 산출물은 커밋 제외됨):
 
 ```
 .agentea/
   role_guide.md                 # 에이전트 역할 안내 (ON 시 생성)
   # Review Loop (라운드별)
-  review_r1.diff                # 리뷰 대상
+  review_r1.diff                # 리뷰 대상 (git diff/commit 시 .diff, file 지정 시 원본 확장자 유지)
   claude_r1.md                  # Claude 응답
   codex_r1.md                   # codex 응답 (활성 시)
   grok_r1.md                    # grok 응답 (활성 시)
@@ -175,12 +186,15 @@ done
 
 ## 🏗️ 아키텍처
 
+### Source Repository Layout (저장소 루트)
+
+> clone 후 폴더 이름은 자유 (`agentea`, `agentea-src` 등). 설치 시 symlink로 `~/.claude/skills/agentea/`에 연결됩니다.
+
 ```
-~/.claude/skills/
-├── agentea/                    # /agentea (ON 진입점)
-│   ├── SKILL.md
-│   └── lib/
-│       └── common.sh           # 공유 헬퍼 12+ 함수 (전 서브스킬이 source)
+agentea/                        # 저장소 루트 (clone 후 이름은 자유)
+├── SKILL.md                    # /agentea 진입점 (symlink 후 Claude가 인식)
+├── lib/
+│   └── common.sh               # 공유 헬퍼 17개 함수 (전 서브스킬이 source)
 ├── agentea-status/SKILL.md
 ├── agentea-ask/SKILL.md
 ├── agentea-review/SKILL.md
@@ -190,6 +204,20 @@ done
 └── agentea-off/SKILL.md
 ```
 
+### Installed Layout (설치 후 `~/.claude/skills/`)
+
+```
+~/.claude/skills/
+├── agentea/          → symlink to agentea-src/   (또는 복사)
+├── agentea-status/   → symlink to agentea-src/agentea-status/
+├── agentea-ask/      → ...
+├── agentea-review/   → ...
+├── agentea-council/  → ...
+├── agentea-brainstorming/ → ...
+├── agentea-clear/    → ...
+└── agentea-off/      → ...
+```
+
 상태 파일: `~/.claude/agentea-state.json` (모든 서브스킬이 공유, v1 → v2 자동 마이그레이션).
 
 ### 핵심 설계 원칙
@@ -197,9 +225,9 @@ done
 | # | 원칙 |
 |---|---|
 | P1 | **Broadcast가 default** — 명령은 활성 에이전트 전체로, 특정 지정은 옵션 |
-| P2 | **ios-* 분해 패턴 기반 + `lib/common.sh` 공유** — 8개 독립 SKILL.md, 12+ 공유 함수는 source |
+| P2 | **각 서브커맨드를 독립 SKILL.md 파일로 분리하는 단일 책임 원칙 + `lib/common.sh` 공유** — 8개 독립 SKILL.md, 17개 공유 함수는 source |
 | P3 | **단일 사용자/단일 세션 가정** — 락 메커니즘 없이 last-write-wins |
-| P4 | **기존 사용자 마이그레이션 호환** — 구 스키마 자동 감지 + 자동 변환 (백업: `.bak.<epoch>`) |
+| P4 | **기존 사용자 마이그레이션 호환** — 구 스키마 자동 감지 + 자동 변환 (백업: `agentea-state.json.bak.<epoch>`) |
 | P5 | **State 진입 체크로 게이팅** — `mode` + `interaction_mode` 두 축으로 분리 |
 
 ### CRITICAL 규칙
@@ -211,6 +239,18 @@ done
 
 ---
 
+## 🔧 트러블슈팅
+
+| 증상 | 원인 | 해결 방법 |
+|---|---|---|
+| `ERROR: agentea lib/common.sh not found` | 스킬 경로 불일치 | `ls ~/.claude/skills/agentea/lib/common.sh` 확인 후 재설치 |
+| 에이전트 pane 생성 후 로그인 화면 | OAuth 세션 만료 | 해당 pane에서 직접 로그인 후 `/agentea` 재실행 |
+| `_wait_file` 타임아웃 | 에이전트가 응답 파일 미저장 | `/agentea-status` 로 상태 확인, 에이전트 pane 직접 점검 |
+| `cmux: command not found` | cmux 미설치 | [cmux.com](https://cmux.com) 에서 macOS 앱 설치 |
+| `/agentea-review pr 123` 실패 | gh CLI 미설치/미로그인 | `brew install gh && gh auth login` 실행 |
+
+---
+
 ## 🤝 기여
 
 PR / 이슈 환영합니다.
@@ -218,6 +258,23 @@ PR / 이슈 환영합니다.
 - 새로운 에이전트 지원 (Cursor, Continue, Aider, …)
 - tmux/zellij/Windows Terminal 지원 (현재 cmux only)
 - 자동화된 통합 테스트 (현재는 수동 검증)
+
+### 새 서브스킬 추가하기
+
+```bash
+# 1) 저장소 루트에 새 디렉토리 생성
+mkdir agentea-mynewskill
+
+# 2) SKILL.md 작성 (기존 agentea-ask/SKILL.md 참조)
+cat > agentea-mynewskill/SKILL.md << 'EOF'
+# /agentea-mynewskill — 설명
+...
+EOF
+
+# 3) common.sh source 후 _require_on 가드 추가 (필수)
+# 4) 설치 스크립트에 'mynewskill' 항목 추가
+# 5) 이 README의 스킬셋 표에 신규 행 추가
+```
 
 ---
 

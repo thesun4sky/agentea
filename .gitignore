@@ -6,3 +6,5 @@
 .omc/state/
 .omc/autopilot/
 .antigravitycli/
+.gstack/
+threads/
