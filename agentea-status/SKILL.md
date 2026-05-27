@@ -8,14 +8,18 @@ argument-hint: ""
 
 ```bash
 # Load shared helpers — portable across skill / plugin / install.sh layouts
+# Discover lib/common.sh — prefer skill-dir / install.sh, else highest plugin version
 _AGENTEA_LIB=""
 for _p in \
   "$HOME/.claude/skills/agentea/lib/common.sh" \
-  "$HOME/.claude/plugins/cache/agentea/agentea/"*/lib/common.sh \
   "$HOME/.claude/agentea-src/lib/common.sh"; do
   [ -f "$_p" ] && _AGENTEA_LIB="$_p" && break
 done
-[ -z "$_AGENTEA_LIB" ] && { echo "ERROR: agentea lib/common.sh not found — reinstall via /plugin install agentea"; exit 1; }
+if [ -z "$_AGENTEA_LIB" ]; then
+  # Plugin install: pick highest semver dir (1.0.10 > 1.0.2 > 1.0.0)
+  _AGENTEA_LIB=$(ls -d "$HOME/.claude/plugins/cache/agentea/agentea/"*/lib/common.sh 2>/dev/null | sort -rV | head -1)
+fi
+[ -z "$_AGENTEA_LIB" ] || [ ! -f "$_AGENTEA_LIB" ] && { echo "ERROR: agentea lib/common.sh not found — reinstall via /plugin install agentea"; exit 1; }
 source "$_AGENTEA_LIB"
 
 _load_state || { echo "⚠️  agentea 세션 없음 — /agentea 로 시작하세요"; exit 0; }
@@ -50,9 +54,10 @@ except Exception:
   fi
 
   screen=$(cmux read-screen --surface "$surface" --lines 5 2>/dev/null)
-  status=$(_classify_screen "$screen")
-  icon=$(_status_icon "$status")
-  printf "  │ %-12s : %s  %s %s\n" "$agent" "$surface" "$icon" "$status"
+  # NOTE: avoid bare name 'status' — zsh has $status as a read-only shell variable
+  agent_status=$(_classify_screen "$screen")
+  icon=$(_status_icon "$agent_status")
+  printf "  │ %-12s : %s  %s %s\n" "$agent" "$surface" "$icon" "$agent_status"
 done
 echo "  └─────────────────────────────────"
 

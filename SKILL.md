@@ -34,14 +34,18 @@ argument-hint: "[on [auto|manual] [codex] [grok] [agy]]"
 
 ```bash
 # Load shared helpers — portable across skill / plugin / install.sh layouts
+# Discover lib/common.sh — prefer skill-dir / install.sh, else highest plugin version
 _AGENTEA_LIB=""
 for _p in \
   "$HOME/.claude/skills/agentea/lib/common.sh" \
-  "$HOME/.claude/plugins/cache/agentea/agentea/"*/lib/common.sh \
   "$HOME/.claude/agentea-src/lib/common.sh"; do
   [ -f "$_p" ] && _AGENTEA_LIB="$_p" && break
 done
-[ -z "$_AGENTEA_LIB" ] && { echo "ERROR: agentea lib/common.sh not found — reinstall via /plugin install agentea"; exit 1; }
+if [ -z "$_AGENTEA_LIB" ]; then
+  # Plugin install: pick highest semver dir (1.0.10 > 1.0.2 > 1.0.0)
+  _AGENTEA_LIB=$(ls -d "$HOME/.claude/plugins/cache/agentea/agentea/"*/lib/common.sh 2>/dev/null | sort -rV | head -1)
+fi
+[ -z "$_AGENTEA_LIB" ] || [ ! -f "$_AGENTEA_LIB" ] && { echo "ERROR: agentea lib/common.sh not found — reinstall via /plugin install agentea"; exit 1; }
 source "$_AGENTEA_LIB"
 
 # Auto-migrate legacy state (codex_surface/grok_surface flat → agents.* nested)
@@ -87,8 +91,9 @@ declare -A EXISTING_SURFACE
 for s in $(cmux tree --workspace "$MY_WORKSPACE" 2>/dev/null | grep -oE '[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}|surface:[0-9]+'); do
   [ "$s" = "$MY_SURFACE" ] && continue
   content=$(cmux read-screen --surface "$s" --lines 8 2>/dev/null)
-  status=$(_classify_screen "$content")
-  case "$status" in
+  # NOTE: avoid bare name 'status' — zsh has $status as a read-only shell variable
+  agent_status=$(_classify_screen "$content")
+  case "$agent_status" in
     ready\(codex\))        EXISTING_SURFACE[codex]="$s" ;;
     ready\(grok\))         EXISTING_SURFACE[grok]="$s" ;;
     ready\(antigravity\))  EXISTING_SURFACE[antigravity]="$s" ;;
