@@ -1,3 +1,8 @@
 .DS_Store
 *.local
 .agentea/
+
+# autopilot/ralplan working state (regenerable; specs+plans below are tracked)
+.omc/state/
+.omc/autopilot/
+.antigravitycli/

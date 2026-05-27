@@ -1,0 +1,68 @@
+---
+name: agentea-ask
+description: Use to send a message to the agentea tea party. By default broadcasts to ALL active agents (codex/grok/antigravity). To target a specific agent, prefix the message with the agent name (e.g., "codex ..." or "agy ..."). Requires /agentea to be ON.
+argument-hint: "[<agent>] <message>"
+---
+
+# /agentea-ask — 메시지 전송 (broadcast 기본)
+
+## 동작
+
+| 입력 형태 | 동작 |
+|---|---|
+| `/agentea-ask "안녕하세요"` | 모든 활성 에이전트에게 broadcast |
+| `/agentea-ask codex "이거 봐줘"` | codex pane에만 전송 |
+| `/agentea-ask agy "이거 봐줘"` | antigravity pane에만 전송 |
+| `/agentea-ask grok "리뷰 부탁"` | grok pane에만 전송 |
+
+첫 토큰이 `codex`/`grok`/`antigravity`/`agy` 중 하나이면 타겟 전송, 아니면 전체 broadcast.
+
+---
+
+## 실행
+
+```bash
+source ~/.claude/skills/agentea/lib/common.sh || {
+  echo "ERROR: agentea lib/common.sh not found"
+  exit 1
+}
+
+_load_state || { echo "⚠️  agentea 세션 없음 — /agentea 로 시작하세요"; exit 0; }
+[ "$MODE" != "on" ] && { echo "⚠️  agentea mode = $MODE (not on) — /agentea 로 시작하세요"; exit 0; }
+
+# Claude는 사용자 입력 전체를 ARGS 변수로 받아 _parse_ask_target 호출
+ARGS="$@"
+if [ -z "$ARGS" ]; then
+  echo "사용법: /agentea-ask [에이전트] <메시지>"
+  echo "  예: /agentea-ask \"전체에게 안녕\""
+  echo "  예: /agentea-ask codex \"이 파일 봐줘: src/foo.ts\""
+  exit 0
+fi
+
+_parse_ask_target "$ARGS"
+
+if [ -n "$PARSED_TARGET" ]; then
+  # 타겟 전송
+  surface=$(_agent_surface "$PARSED_TARGET")
+  if [ -z "$surface" ]; then
+    echo "⚠️  [$PARSED_TARGET] 비활성 — /agentea 에서 다시 활성화하세요"
+    exit 1
+  fi
+  _send_to_agent "$PARSED_TARGET" "$PARSED_MESSAGE"
+  echo "📨 [$PARSED_TARGET] ← \"$PARSED_MESSAGE\""
+else
+  # broadcast
+  _broadcast "$PARSED_MESSAGE"
+fi
+```
+
+---
+
+## CRITICAL 규칙
+
+- 메시지에 줄바꿈 포함 금지 — `cmux send`는 단일 라인만 안전
+- 코드/diff 직접 붙이지 말 것 → 파일에 저장 후 경로 전달:
+  ```bash
+  echo "this code" > .agentea/scratch.txt
+  /agentea-ask codex ".agentea/scratch.txt 읽고 검토"
+  ```
