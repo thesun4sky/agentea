@@ -26,11 +26,18 @@ echo "  Surface 주소"
 echo "  ┌─────────────────────────────────"
 echo "  │ Claude : $MY_SURFACE"
 for agent in "${KNOWN_AGENTS[@]}"; do
-  n=$(echo "$agent" | tr '[:lower:]' '[:upper:]')
-  enabled_var="AGENT_${n}_ENABLED"
-  surface_var="AGENT_${n}_SURFACE"
-  enabled="${!enabled_var}"
-  surface="${!surface_var}"
+  # Read enabled/surface from state file (zsh + bash compatible)
+  read_result=$(python3 -c "
+import json
+try:
+    d = json.load(open('$STATE_FILE'))
+    info = d.get('agents',{}).get('$agent',{})
+    print((info.get('surface') or '') + '\t' + ('true' if info.get('enabled') else 'false'))
+except Exception:
+    print('\tfalse')
+")
+  surface="${read_result%%	*}"
+  enabled="${read_result##*	}"
 
   if [ "$enabled" != "true" ] || [ -z "$surface" ]; then
     printf "  │ %-12s : (disabled)\n" "$agent"
