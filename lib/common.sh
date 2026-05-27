@@ -1,11 +1,14 @@
 # agentea/lib/common.sh — shared helpers for all agentea-* subskills
 #
-# REQUIRED USAGE in every subskill SKILL.md:
-#   source ~/.claude/skills/agentea/lib/common.sh || {
-#     echo "ERROR: agentea lib/common.sh not found at ~/.claude/skills/agentea/lib/common.sh"
-#     echo "       Run /agentea to reinstall, or check installation."
-#     exit 1
-#   }
+# REQUIRED USAGE in every subskill SKILL.md (portable across install layouts):
+#   _AGENTEA_LIB=""
+#   for _p in "$HOME/.claude/skills/agentea/lib/common.sh" \
+#             "$HOME/.claude/plugins/cache/agentea/agentea/"*/lib/common.sh \
+#             "$HOME/.claude/agentea-src/lib/common.sh"; do
+#     [ -f "$_p" ] && _AGENTEA_LIB="$_p" && break
+#   done
+#   [ -z "$_AGENTEA_LIB" ] && { echo "ERROR: agentea lib/common.sh not found"; exit 1; }
+#   source "$_AGENTEA_LIB"
 #
 # Schema v2 (current):
 #   ~/.claude/agentea-state.json

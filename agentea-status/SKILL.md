@@ -7,11 +7,16 @@ argument-hint: ""
 # /agentea-status — 세션 주소 + 실시간 상태 조회
 
 ```bash
-source ~/.claude/skills/agentea/lib/common.sh || {
-  echo "ERROR: agentea lib/common.sh not found at ~/.claude/skills/agentea/lib/common.sh"
-  echo "       Run /agentea to reinstall."
-  exit 1
-}
+# Load shared helpers — portable across skill / plugin / install.sh layouts
+_AGENTEA_LIB=""
+for _p in \
+  "$HOME/.claude/skills/agentea/lib/common.sh" \
+  "$HOME/.claude/plugins/cache/agentea/agentea/"*/lib/common.sh \
+  "$HOME/.claude/agentea-src/lib/common.sh"; do
+  [ -f "$_p" ] && _AGENTEA_LIB="$_p" && break
+done
+[ -z "$_AGENTEA_LIB" ] && { echo "ERROR: agentea lib/common.sh not found — reinstall via /plugin install agentea"; exit 1; }
+source "$_AGENTEA_LIB"
 
 _load_state || { echo "⚠️  agentea 세션 없음 — /agentea 로 시작하세요"; exit 0; }
 

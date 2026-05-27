@@ -21,10 +21,16 @@ argument-hint: ""
 ## 실행
 
 ```bash
-source ~/.claude/skills/agentea/lib/common.sh || {
-  echo "ERROR: agentea lib/common.sh not found"
-  exit 1
-}
+# Load shared helpers — portable across skill / plugin / install.sh layouts
+_AGENTEA_LIB=""
+for _p in \
+  "$HOME/.claude/skills/agentea/lib/common.sh" \
+  "$HOME/.claude/plugins/cache/agentea/agentea/"*/lib/common.sh \
+  "$HOME/.claude/agentea-src/lib/common.sh"; do
+  [ -f "$_p" ] && _AGENTEA_LIB="$_p" && break
+done
+[ -z "$_AGENTEA_LIB" ] && { echo "ERROR: agentea lib/common.sh not found — reinstall via /plugin install agentea"; exit 1; }
+source "$_AGENTEA_LIB"
 
 _load_state || { echo "⚠️  agentea 세션 없음"; exit 0; }
 

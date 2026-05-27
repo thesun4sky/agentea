@@ -33,12 +33,16 @@ argument-hint: "[on [auto|manual] [codex] [grok] [agy]]"
 ## 0. 환경 초기화 + 공유 라이브러리 로드
 
 ```bash
-# Load shared helpers (REQUIRED)
-source ~/.claude/skills/agentea/lib/common.sh || {
-  echo "ERROR: agentea lib/common.sh not found at ~/.claude/skills/agentea/lib/common.sh"
-  echo "       Run /agentea to reinstall, or check installation."
-  exit 1
-}
+# Load shared helpers — portable across skill / plugin / install.sh layouts
+_AGENTEA_LIB=""
+for _p in \
+  "$HOME/.claude/skills/agentea/lib/common.sh" \
+  "$HOME/.claude/plugins/cache/agentea/agentea/"*/lib/common.sh \
+  "$HOME/.claude/agentea-src/lib/common.sh"; do
+  [ -f "$_p" ] && _AGENTEA_LIB="$_p" && break
+done
+[ -z "$_AGENTEA_LIB" ] && { echo "ERROR: agentea lib/common.sh not found — reinstall via /plugin install agentea"; exit 1; }
+source "$_AGENTEA_LIB"
 
 # Auto-migrate legacy state (codex_surface/grok_surface flat → agents.* nested)
 _migrate_state_v1_to_v2
