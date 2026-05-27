@@ -1,0 +1,35 @@
+{
+  "name": "agentea",
+  "owner": {
+    "name": "thesun4sky",
+    "url": "https://github.com/thesun4sky"
+  },
+  "metadata": {
+    "description": "🫖 agentea marketplace — multi-agent tea party plugin for Claude Code",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "agentea",
+      "source": "./",
+      "description": "🫖 Claude Code + Codex + Grok + Antigravity 4-agent tea party — multi-agent code review, council decisions, and brainstorming via cmux panes",
+      "version": "1.0.0",
+      "author": {
+        "name": "thesun4sky"
+      },
+      "homepage": "https://github.com/thesun4sky/agentea",
+      "repository": "https://github.com/thesun4sky/agentea",
+      "license": "MIT",
+      "keywords": [
+        "multi-agent",
+        "code-review",
+        "council",
+        "brainstorming",
+        "cmux",
+        "codex",
+        "grok",
+        "antigravity"
+      ]
+    }
+  ]
+}
