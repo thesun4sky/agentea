@@ -1,6 +1,10 @@
 # 🫖 agentea
 
 <p align="center">
+  <img src="docs/images/agentea-mascots.jpg" alt="agentea mascots — Claude, Codex, Grok, Antigravity gathered around a teapot" width="420">
+</p>
+
+<p align="center">
   <strong>Claude Code + Codex + Grok + Antigravity 가 함께 일하는 다중 에이전트 협업 스킬셋</strong>
 </p>
 
